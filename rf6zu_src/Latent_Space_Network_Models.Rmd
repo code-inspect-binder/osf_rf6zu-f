@@ -1,0 +1,353 @@
+---
+title: "Latent Space Network Models"
+author: "Florian Pargent"
+date: "28.06.2017"
+bibliography: LatentSpaceNetworkModels.bib
+header-includes:
+  - \widowpenalties 1 150
+output: 
+  beamer_presentation:
+    toc: true
+    theme: "Boadilla"
+    colortheme: "dolphin"
+    fonttheme: "professionalfonts"
+    fig_width: 10
+    fig_height: 8
+    fig_caption: false
+    highlight: default
+    df_print: kable
+    slide_level: 2
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.align = "center", warning=FALSE)
+```
+
+```{r packages, include=FALSE}
+library(statnet)
+library(latentnet)
+```
+
+# Grundidee des Latent Space Ansatzes
+
+## Typische Netzwerk Eigenschaften
+- Transitivity  
+- Homophily
+- Community Structure
+- Degree Heterogeneity
+
+## Modellierung eines latenten "Social Space"
+- Jeder Knoten im Netzwerk wird repräsentiert durch einen Positionsvektor im $\mathbb{R}^2$ (selten $\mathbb{R}^3$ oder höher) 
+- Wahrscheinlichkeit für das Vorliegen einer Kante zwischen zwei Knoten 
+hängt ab vom euklidischen Abstand der beiden Knoten
+- Bedingt auf die latenten Positionen der Knoten, sind alle Kanten voneinander unabhängig
+
+Vorteile:  
+
+- Modellierbarkeit typischer Charakteristiken von Netzwerken 
+- Natürliche grafische Darstellung des Netzwerkmodells
+
+
+# Beispieldatensatz: Publikationen am Statistikinstitut
+[@krivitsky_fitting_2008]
+
+```{r network_setup}
+sociomatrix <- readRDS("sociomatrix.rds")
+network <- network(sociomatrix, directed = FALSE, matrix.type = "adjacency")
+set.edge.value(network, "Weight", sociomatrix)
+```
+
+## Webscraping von der Homepage des Statistikinstituts
+![](Screenshot_060617.png)
+
+## Soziomatrix (`r ncol(sociomatrix)` Knoten)
+```{r heatmap}
+heatmap(sociomatrix, scale="none", col = cm.colors(256), Rowv = NA, Colv = NA, revC = TRUE)
+```
+
+# Latent Space Modelle in aufsteigender Komplexität (Anwendung mit dem R Paket latentnet)
+
+## Latent Position Model (LPM)
+
+$$log\left(\frac{P(Y_{ij} = 1 | Z, x, \beta)}{P(Y_{ij} = 0 | Z, x, \beta)}\right) = \sum_{k=0}^p\beta_kx_{kij} - \|Z_i - Z_j\|$$
+     
+[@hoff_latent_2002]
+
+***
+
+```{r MCMC_settings}
+mcmc_control <- ergmm.control(sample.size = 30000L, 
+                                       burnin = 60000L,
+                                       interval = 30L)
+```
+
+```{r LPM, include=FALSE}
+set.seed(1)
+LPM <- ergmm(network ~ euclidean(d=2, G=0), 
+             family = "Bernoulli", 
+             control = mcmc_control)
+```
+```{r}
+plot(LPM, labels = FALSE, plot.means = FALSE, plot.vars = FALSE, 
+     suppress.center = TRUE, suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LPM", xlab = "", ylab = "",
+     label.pos = 1, label.cex = 1, vertex.cex = 1, object.scale = 0.01)
+```
+
+***
+
+```{r}
+plot(LPM, labels = TRUE, plot.means = FALSE, plot.vars = FALSE, 
+     suppress.center = TRUE, suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LPM", xlab = "", ylab = "",
+     label.pos = 1, label.cex = 0.7, vertex.cex = 1, object.scale = 0.01)
+```
+
+## Latent Cluster Model (LCM)
+
+$$log\left(\frac{P(Y_{ij} = 1 | Z, x, \beta)}{P(Y_{ij} = 0 | Z, x, \beta)}\right) = \sum_{k=0}^p\beta_kx_{kij} - \|Z_i - Z_j\|$$
+$$Z_i \sim \sum_{g=1}^G\lambda_gMVN_d(\mu_g, \,\sigma^2_gI_d)$$
+    
+[@handcock_model-based_2007]    
+
+***
+
+```{r LCM, include=FALSE}
+set.seed(1)
+LCM <- ergmm(network ~ euclidean(d=2, G=3), 
+             family = "Bernoulli",
+             control = mcmc_control)
+```
+```{r}
+plot(LCM, pie = TRUE, labels = FALSE, suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCM", xlab = "", ylab = "")
+```
+
+***
+
+```{r}
+plot(LCM, pie = TRUE, labels = TRUE, suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCM", xlab = "", ylab = "", label.cex = 0.7)
+```
+
+## Latent Cluster Random Effects Model (LCREM)
+
+$$log\left(\frac{P(Y_{ij} = 1 | Z, x, \beta)}{P(Y_{ij} = 0 | Z, x, \beta)}\right) = \sum_{k=0}^p\beta_kx_{kij} - \|Z_i - Z_j\| + \delta_i + \delta_j$$
+$$\delta_{i,j} \sim N(0,\,\sigma^2_\delta)$$
+$$Z_i \sim \sum_{g=1}^G\lambda_gMVN_d(\mu_g, \,\sigma^2_gI_d)$$
+    
+[@krivitsky_representing_2009]
+
+***
+
+```{r LCREM, include=FALSE}
+set.seed(1)
+LCREM <- ergmm(network ~ euclidean(d=2, G=4) + rsociality, 
+               family = "Bernoulli", 
+               control = mcmc_control)
+```
+```{r}
+plot(LCREM, pie = TRUE, labels = FALSE, rand.eff = "sociality", 
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM", xlab = "", ylab = "")
+```
+
+***
+
+```{r}
+plot(LCREM, pie = TRUE, labels = TRUE, rand.eff = "sociality", 
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM", xlab = "", ylab = "", label.cex = 0.7)
+```
+
+***
+
+```{r LCREM_cov, warning=TRUE, include=FALSE}
+professors <- c("Augustin,T", "Bischl,B", "Boulesteix,A", "Fahrmeir,L", 
+                "Greven,S", "Heumann,C", "Kauermann,G", "Küchenhoff,H",
+                "Mansmann,U", "Mayr,A", "Schmid,V", "Tutz,G")
+
+prof_cov <- outer(colnames(sociomatrix) %in% professors, colnames(sociomatrix) %in% professors,"+")
+two_profs <- (prof_cov == 2) + 0
+zero_profs <- (prof_cov == 0) + 0
+
+rownames(two_profs) <- rownames(sociomatrix)
+colnames(two_profs) <- colnames(sociomatrix)
+rownames(zero_profs) <- rownames(sociomatrix)
+colnames(zero_profs) <- colnames(sociomatrix)
+
+set.seed(1)
+LCREM_cov <- ergmm(network ~ euclidean(d=2, G=4) + rsociality + edgecov(zero_profs) + edgecov(two_profs),
+                   family = "Bernoulli",
+                   control = mcmc_control)
+```
+```{r}
+plot(LCREM_cov, pie = TRUE, labels = FALSE, rand.eff = "sociality", 
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM mit Kovariable Professoren", xlab = "", ylab = "")
+```
+
+***
+
+```{r}
+plot(LCREM_cov, pie = TRUE, labels = TRUE, rand.eff = "sociality", 
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM mit Kovariable Professoren", xlab = "", ylab = "", label.cex = 0.7)
+```
+
+***
+
+## Schätzwerte für $\beta$
+```{r LCREM_cov_summary, include=FALSE}
+sum_LCREM_cov <- summary(LCREM_cov)
+coefs_LCREM_cov <- sum_LCREM_cov$pmean$coef.table[,1:3]
+rownames(coefs_LCREM_cov) <- c("Intercept (Ein Professor)", "Kein Professor", "Zwei Professoren")
+colnames(coefs_LCREM_cov)[1] <- "Posterior Mean"
+```
+```{r}
+round(coefs_LCREM_cov, 2)
+```
+
+# Erweiterung auf nicht binäre Netzwerke
+## Zähldaten
+$$Y_{ij}|\mu_{ij} \sim Poisson(\mu_{ij})$$
+$$log(\mu_{ij}) = \sum_{k=0}^p\beta_kx_{kij} - \|Z_i - Z_j\| + \delta_i + \delta_j$$
+$$\delta_{i,j} \sim N(0,\,\sigma^2_\delta)$$
+$$Z_i \sim \sum_{g=1}^G\lambda_gMVN_d(\mu_g,\, \sigma^2_gI_d)$$
+
+***
+
+```{r LCREM_Poi, include=FALSE}
+set.seed(2)
+LCREM_Poi <- ergmm(network ~ euclidean(d=2, G=3) + rsociality + edgecov(zero_profs) + edgecov(two_profs), 
+                   response = "Weight", 
+                   family = "Poisson",
+                   control = mcmc_control)
+```
+```{r}
+plot(LCREM_Poi, pie = TRUE, labels = FALSE, rand.eff = "sociality",
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM mit Poisson Response und Kovariable Professoren", xlab = "", ylab = "")
+```
+
+***
+
+```{r}
+plot(LCREM_Poi, pie = TRUE, labels = TRUE, rand.eff = "sociality",
+     suppress.axes = TRUE, print.formula = TRUE, 
+     main = "LCREM mit Poisson Response und Kovariable Professoren", xlab = "", ylab = "", label.cex = 0.7)
+```
+
+***
+
+## Schätzwerte für $\beta$
+```{r LCREM_Poi_summary, include=FALSE}
+sum_LCREM_Poi <- summary(LCREM_Poi)
+coefs_LCREM_Poi <- sum_LCREM_Poi$pmean$coef.table[,1:3]
+rownames(coefs_LCREM_Poi) <- c("Intercept (Ein Professor)", "Kein Professor", "Zwei Professoren")
+colnames(coefs_LCREM_Poi)[1] <- "Posterior Mean"
+```
+```{r}
+round(coefs_LCREM_Poi, 2)
+```
+
+
+# Modellschätzung
+
+## ML Schätzung am Beispiel des LPM
+
+### log-Likelihood (vgl. logistische Regression):
+
+$$log(f(y|\eta)) = \sum_{i \neq j}(\eta_{ij}y_{iy} - log(1+e^{\eta_{ij}}))$$
+$$\eta_{ij} = \sum_{k=0}^p\beta_kx_{kij} - \|Z_i - Z_j\| = \sum_{k=0}^p\beta_kx_{kij} - d_{ij}$$
+
+### Likelihood ist konkav bzgl. $D$ aber nicht bzgl. $Z$.  
+Deshalb numerische Optimierung:
+
+- Approximiere $D$ durch geodesische Distanzen
+- Identifiziere Positionen $Z$ aus $D$ mit multidimensionaler Skalierung
+- Verwende $Z$ als Startwerte für nicht lineare Optimierung  
+(z.b. optim in R) 
+
+
+
+## Volle Bayes Inferenz am Beispiel des LCM
+### Priori Verteilungen
+
+$$\beta \sim MVN_{p+1}(\xi,\, \Psi)$$
+$$\lambda \sim Dirichlet(\nu)$$
+$$\mu_{g} \sim MVN_d(0,\, \omega^2I_d)$$
+$$\sigma^2_g \sim \sigma^2_0Inv\chi^2_\alpha$$
+
+***
+
+### Full Conditionals (bekannt bis auf Konstanten)
+
+$$ z_i|K_i,... \propto \phi_d(z_i; \mu_g, \sigma^2_gI_d)\,f(y|Z,x,\beta) $$
+$$ \beta|Z,... \propto \phi_{p+1}(\beta; \xi, \Psi)\,f(y|Z,x,\beta) $$
+
+### Full Conditionals (bekannt)
+
+$$ \lambda|... \sim Dirichlet(m + \nu) $$
+
+$$ \mu_g|... \sim MVN_d\left(\frac{m_g\bar{z}_g}{m_g + \sigma_g/\omega^2},\frac{\sigma^2_g}{m_g + \sigma^2_g/\omega^2}I\right) $$
+
+$$ \sigma^2_g|... \sim (\sigma^2_0 + ds_g^2)Inv\chi^2_{\alpha + m_gd} $$
+
+$$ P(K_i = g|...) = \frac{\lambda_g\phi_d(z_i;\mu_g,\sigma^2_gI_d)}{\sum_{r = 1}^G\lambda_r\phi_d(z_i;\mu_r, \sigma^2_rI_d)} $$
+
+## MCMC Algorithmus
+### Metropolis-Algorithmus für $Z_{t+1}$ (zufällige Reihenfolge)
+- Vorschlag: $Z^*_i \sim MVN_d(Z_{it}, \tau_Z^2I_d)$
+- Akzeptanz WK: $\frac{f(y|Z^*,x,\beta_t)\phi_d(Z^*_i;\mu_{K_i},\sigma^2_{K_i}I_d)}{f(y|Z_t,x,\beta_t)\phi_d(Z_{it};\mu_{K_i},\sigma^2_{K_i}I_d)}$
+
+### Metropolis-Algorithmus für $\beta_{t+1}$
+- Vorschlag: $\beta^* \sim MVN_{p+1}(\beta_t, \tau_\beta^2I_{p+1})$
+- Akzeptanz WK: $\frac{f(y|Z_{t+1},x,\beta^*)\phi_{p+1}(\beta^*;\xi,\Psi)}{f(y|Z_{t+1},x,\beta_t)\phi_{p+1}(\beta_t;\xi,\Psi)}$
+
+### Gibbs-Sampling für:
+$K_i, \mu_g, \sigma^2_g$ und $\lambda_g$
+
+# Identifizierbarkeit der Modellparameter
+
+***
+
+## Latente Positionen
+- Die Likelihood hängt von den latenten Positionen nur über deren Distanzen ab
+- Damit ist die Likelihood invariant gegenüber Spiegelung, Rotation und Verschiebung der latenten Positionen
+
+### Lösung: 
+Suche die Parameterschätzungen mit dem geringsten erwarteten a posteriori Verlust (bzgl. der Kullback-Leibler Verlustfunktion)
+\newcommand{\argmin}{\operatornamewithlimits{argmin}}
+\newcommand{\argmax}{\operatornamewithlimits{argmax}}
+
+$$ \hat{\eta}_{MKL} = \argmin_{\eta_*}\: E_{\eta|Y_{obs}}(KL(\eta, \eta_*)) $$
+$$ = \argmax_{\eta_*}\: \frac{\exp(\eta_*^TE_\eta(Y|Y_{obs}))}{\prod_{i \neq j}(1+\exp(\eta_{ij*}))}$$
+[@shortreed_positional_2006]:
+
+## Klassen Labels
+- Invarianz gegenüber Permutationen der Clusterlabels 
+- Labelswitching Problem analog zu anderen Mixture Modellen
+
+### Lösung: 
+Finde Clusterwahrscheinlichkeiten durch Minimierung des approximierten a posteriori erwarteten Verlusts (bzgl. der Kullback-Leibler Verlustfunktion) über alle möglichen Permutationen der Clusterlabels [@stephens_dealing_2000]
+
+## Intercept/Random Effects im LCREM
+- Invarianz des Intercepts und der Random Effects bzgl. einer additiven Konstanten $c$:
+$$ \delta_i^* = \delta_i + c\;,\;\forall i$$
+$$  \beta_0^* = \beta_0 - c $$
+
+### Lösung: 
+Korrelierte Vorschlagsdichten und Block-Updates im MCMC Algorithmus des LCREM
+[@krivitsky_representing_2009]
+
+***
+
+## Vielen Dank für die Aufmerksamkeit!
+```{r}
+plot(LCREM_cov, what = "density", density.par = list(totaldens = FALSE), suppress.axes = TRUE)
+```
+
+***
+
+## Quellen {.allowframebreaks}
